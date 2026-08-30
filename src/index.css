@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   AURORA — DESIGN TOKENS
+   Ponto único de identidade visual. Trocar os valores abaixo re-tematiza todo
+   o produto (ver paleta alternativa "Índigo" comentada ao final).
+   Paleta: neutros quentes + verde-petróleo como cor de marca — transmite
+   saúde, tecnologia, organização e confiança.
+============================================================================ */
+@theme {
+  --color-canvas: #f6f7f8;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f3f4;
+  --color-surface-3: #e9eced;
+
+  --color-ink: #15181c;
+  --color-muted: #59626d;
+  --color-faint: #929aa5;
+
+  --color-line: #e6e9eb;
+  --color-line-strong: #d5dadd;
+
+  --color-primary: #0f766e;
+  --color-primary-hover: #0b5b55;
+  --color-primary-soft: #e2f0ee;
+  --color-primary-ink: #0a4f49;
+
+  --color-accent: #b45309;
+  --color-accent-soft: #f8ecdc;
+
+  --color-ok: #15803d;
+  --color-ok-soft: #e6f2ea;
+  --color-warn: #b45309;
+  --color-warn-soft: #f9eeddff;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fbe9e9;
+  --color-info: #2563eb;
+  --color-info-soft: #e7eefc;
+  --color-violet: #7c3aed;
+  --color-violet-soft: #f0e9fd;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Fraunces", "Inter", ui-serif, Georgia, serif;
+
+  --radius-card: 14px;
+
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --shadow-pop: 0 10px 30px -8px rgba(16, 24, 40, 0.16), 0 4px 10px -4px rgba(16, 24, 40, 0.08);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.011em;
+  }
+}
+
+@layer components {
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+  }
+  .card-flat {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+  }
+  .focusable:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  .scroll-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 999px;
+  }
+  .fade-in {
+    animation: fadeIn 0.24s ease both;
+  }
+  .rise-in {
+    animation: riseIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-surface-2);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  animation: shimmer 1.4s infinite;
+}
+
+/* Paleta alternativa "Índigo Clínico" — copie sobre o bloco @theme para trocar:
+   --color-primary:#4f46e5; --color-primary-hover:#4338ca;
+   --color-primary-soft:#ecebfe; --color-primary-ink:#3730a3;
+*/
