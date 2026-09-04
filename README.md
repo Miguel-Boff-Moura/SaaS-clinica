@@ -1,5 +1,7 @@
 # Aurora — Gestão + CRM para Clínicas
 
+[Clique aqui para acessar o Site]([https://google.com](https://miguel-boff-moura.github.io))
+
 Protótipo navegável de um SaaS de gestão clínica e CRM, inspirado nas melhores
 ideias de produtos como iClinic e Gestek — sem copiar identidade, textos ou
 layout — com uma UX mais moderna, limpa e comercial.
