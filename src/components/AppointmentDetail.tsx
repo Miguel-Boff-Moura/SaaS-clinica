@@ -1,40 +1,61 @@
-import { useNavigate } from "react-router-dom";
 import {
   CalendarClock,
   CheckCircle2,
   DoorOpen,
   MessageCircle,
   Play,
-  UserRound,
   XCircle,
 } from "lucide-react";
-import type { Appointment } from "@/types";
 import { SlideOver } from "@/components/ui/SlideOver";
 import { Badge, APPOINTMENT_STATUS } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { Field } from "@/components/ui/Misc";
 import { useToast } from "@/components/ui/Toast";
-import { patientById, procedureById, professionalById, roomById } from "@/data";
 import { time, fullDate } from "@/lib/format";
+import type { AppointmentStatus } from "@/hooks/useAppointments";
+
+export interface AppointmentView {
+  id: string;
+  inicio: Date;
+  fim: Date;
+  pacienteId: string;
+  profissionalId: string;
+  procedimentoId: string;
+  salaId: string;
+  status: AppointmentStatus;
+  tipo: string;
+  origem: string;
+  observacao?: string;
+}
+
+interface Lookups {
+  patientMap: Map<string, { id: string; nome: string; telefone: string }>;
+  professionalMap: Map<string, { id: string; nome: string }>;
+  procedureMap: Map<string, { id: string; nome: string; duracao_min: number }>;
+  roomMap: Map<string, { id: string; nome: string }>;
+}
 
 export function AppointmentDetail({
   appointment,
   onClose,
   onStatusChange,
+  patientMap,
+  professionalMap,
+  procedureMap,
+  roomMap,
 }: {
-  appointment: Appointment | null;
+  appointment: AppointmentView | null;
   onClose: () => void;
-  onStatusChange?: (id: string, status: Appointment["status"]) => void;
-}) {
-  const navigate = useNavigate();
+  onStatusChange?: (id: string, status: AppointmentStatus) => void;
+} & Lookups) {
   const toast = useToast();
   const open = !!appointment;
 
-  const patient = appointment ? patientById(appointment.pacienteId) : undefined;
-  const proc = appointment ? procedureById(appointment.procedimentoId) : undefined;
-  const pro = appointment ? professionalById(appointment.profissionalId) : undefined;
-  const room = appointment ? roomById(appointment.salaId) : undefined;
+  const patient = appointment ? patientMap.get(appointment.pacienteId) : undefined;
+  const proc = appointment ? procedureMap.get(appointment.procedimentoId) : undefined;
+  const pro = appointment ? professionalMap.get(appointment.profissionalId) : undefined;
+  const room = appointment ? roomMap.get(appointment.salaId) : undefined;
   const meta = appointment ? APPOINTMENT_STATUS[appointment.status] : undefined;
 
   return (
@@ -46,13 +67,7 @@ export function AppointmentDetail({
       footer={
         appointment && (
           <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              onClick={() => {
-                onStatusChange?.(appointment.id, "em_atendimento");
-                navigate(`/atendimentos/${appointment.id}`);
-              }}
-            >
+            <Button size="sm" onClick={() => onStatusChange?.(appointment.id, "em_atendimento")}>
               <Play size={14} /> Iniciar atendimento
             </Button>
             <Button size="sm" variant="secondary" onClick={() => { onStatusChange?.(appointment.id, "confirmado"); toast.success("Agendamento confirmado"); }}>
@@ -92,7 +107,7 @@ export function AppointmentDetail({
                 {room?.nome}
               </span>
             </Field>
-            <Field label="Duração">{proc?.duracaoMin} min</Field>
+            <Field label="Duração">{proc?.duracao_min} min</Field>
             <Field label="Origem">{appointment.origem}</Field>
           </div>
 
@@ -101,16 +116,6 @@ export function AppointmentDetail({
               {appointment.observacao}
             </div>
           )}
-
-          <button
-            onClick={() => navigate(`/pacientes/${patient.id}`)}
-            className="focusable flex w-full items-center justify-between rounded-xl border border-line bg-white px-4 py-3 text-left hover:bg-surface-2"
-          >
-            <span className="flex items-center gap-2 text-[13px] font-medium text-ink">
-              <UserRound size={15} className="text-primary" /> Abrir ficha completa do paciente
-            </span>
-            <span className="text-[13px] text-faint">R$ {patient.valorGasto.toLocaleString("pt-BR")} · {patient.procedimentos.length} atend.</span>
-          </button>
         </div>
       )}
     </SlideOver>

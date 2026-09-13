@@ -28,6 +28,10 @@ import {
   patientById,
   procedureById,
   professionalById,
+  PATIENTS,
+  PROFESSIONALS,
+  PROCEDURES,
+  ROOMS,
   REVENUE_SERIES,
   todayAppointments,
 } from "@/data";
@@ -50,6 +54,10 @@ export function Dashboard() {
   const returns = useMemo(() => computeReturns().filter((r) => r.status !== "em_dia"), []);
   const inds = useMemo(() => indicators(), []);
   const agenda = useMemo(() => todayAppointments(), []);
+  const patientMap = useMemo(() => new Map(PATIENTS.map((p) => [p.id, p])), []);
+  const professionalMap = useMemo(() => new Map(PROFESSIONALS.map((p) => [p.id, p])), []);
+  const procedureMap = useMemo(() => new Map(PROCEDURES.map((p) => [p.id, { ...p, duracao_min: p.duracaoMin }])), []);
+  const roomMap = useMemo(() => new Map(ROOMS.map((r) => [r.id, r])), []);
 
   const withStatus = (a: Appointment): Appointment => ({ ...a, status: statuses[a.id] ?? a.status });
 
@@ -234,6 +242,10 @@ export function Dashboard() {
         appointment={selected ? withStatus(selected) : null}
         onClose={() => setSelected(null)}
         onStatusChange={(id, status) => setStatuses((s) => ({ ...s, [id]: status }))}
+        patientMap={patientMap}
+        professionalMap={professionalMap}
+        procedureMap={procedureMap}
+        roomMap={roomMap}
       />
     </div>
   );
