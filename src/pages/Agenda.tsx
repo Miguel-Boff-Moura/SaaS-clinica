@@ -69,6 +69,7 @@ export function Agenda() {
         observacao: a.observacao ?? undefined,
         dataRetorno: a.data_retorno,
         dataManutencao: a.data_manutencao,
+        valor: a.valor,
       })),
     [appointmentsRaw]
   );
@@ -390,12 +391,12 @@ function NovoAgendamentoModal({
   onClose: () => void;
   patients: { id: string; nome: string; telefone: string }[];
   professionals: { id: string; nome: string }[];
-  procedures: { id: string; nome: string; duracao_min: number }[];
+  procedures: { id: string; nome: string; duracao_min: number; preco: number }[];
   rooms: { id: string; nome: string }[];
   createPatient: (input: { nome: string; telefone: string }) => Promise<{ data: { id: string } | null; error: string | null }>;
   createAppointment: (input: {
     inicio: string; fim: string; paciente_id: string; profissional_id: string;
-    procedimento_id: string; sala_id: string; tipo: string; origem: string; observacao?: string;
+    procedimento_id: string; sala_id: string; tipo: string; origem: string; observacao?: string; valor: number;
   }) => Promise<{ error: string | null }>;
   onCreated: () => void;
 }) {
@@ -461,6 +462,7 @@ function NovoAgendamentoModal({
       tipo: "Procedimento",
       origem: "Recepção",
       observacao: observacao || undefined,
+      valor: proc.preco,
     });
 
     setSubmitting(false);
