@@ -21,27 +21,16 @@ import { Communication } from "@/pages/Communication";
 import { Settings } from "@/pages/Settings";
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { session, profile, loading, profileLoading, signOut } = useAuth();
+  const { session, profile, loading, profileLoading } = useAuth();
   const location = useLocation();
 
   if (loading || profileLoading) return null;
   if (!session) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
 
-  // Portal do paciente (módulo 2.3) ainda não existe — até lá, só admin
-  // acessa o sistema, pra não expor dados de outros pacientes.
-  if (profile?.role !== "admin") {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-surface-2 px-4 text-center">
-        <p className="text-lg font-semibold text-ink">Portal do paciente em construção</p>
-        <p className="max-w-sm text-sm text-muted">
-          Sua conta está ativa, mas o acesso pelo próprio paciente ainda não foi liberado.
-          Fale com a clínica se precisar remarcar ou consultar algo.
-        </p>
-        <button onClick={signOut} className="text-sm font-medium text-primary-ink hover:underline">
-          Sair
-        </button>
-      </div>
-    );
+  // Paciente usa o mesmo layout, mas só acessa a própria agenda —
+  // qualquer outra rota redireciona pra lá.
+  if (profile?.role !== "admin" && location.pathname !== "/agenda") {
+    return <Navigate to="/agenda" replace />;
   }
 
   return <>{children}</>;

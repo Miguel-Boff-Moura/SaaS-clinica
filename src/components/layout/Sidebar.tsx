@@ -3,6 +3,7 @@ import { PanelLeftClose, PanelLeftOpen, Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { NAV } from "./nav";
 import { CLINIC } from "@/data";
+import { useAuth } from "@/lib/auth";
 
 export function Sidebar({
   collapsed,
@@ -11,6 +12,9 @@ export function Sidebar({
   collapsed: boolean;
   onToggle: () => void;
 }) {
+  const { profile } = useAuth();
+  const items = profile?.role === "admin" ? NAV : NAV.filter((i) => i.to === "/agenda");
+
   return (
     <aside
       className={cn(
@@ -31,7 +35,7 @@ export function Sidebar({
       </div>
 
       <nav className="scroll-thin flex-1 overflow-y-auto px-3 pb-4 pt-1">
-        {NAV.map((item) => (
+        {items.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
