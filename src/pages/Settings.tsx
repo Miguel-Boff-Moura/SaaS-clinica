@@ -15,15 +15,16 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { useProfessionals } from "@/hooks/useProfessionals";
+import { useClinicSettings, type ClinicSettings } from "@/hooks/useClinicSettings";
 import { useAuth } from "@/lib/auth";
 import {
-  CLINIC,
   ROLE_PERMISSIONS,
   ROOMS,
   UNITS,
   USERS,
 } from "@/data";
 import { fullDate } from "@/lib/format";
+import { maskCNPJ, maskPhone, isValidCNPJ, isValidPhone, isValidEmail } from "@/lib/masks";
 import { cn } from "@/lib/cn";
 
 const SECTIONS = [
@@ -43,6 +44,7 @@ export function Settings() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "admin";
   const { data: professionals, loading: loadingProfessionals, error: professionalsError, create: createProfessional } = useProfessionals();
+  const { data: clinic, loading: loadingClinic, error: clinicError, update: updateClinic } = useClinicSettings();
   const [section, setSection] = useState("clinica");
   const [profModalOpen, setProfModalOpen] = useState(false);
 
@@ -70,14 +72,24 @@ export function Settings() {
           {section === "clinica" && (
             <Card>
               <div className="p-5">
-                <CardHeader title="Dados da clínica" action={<Button size="sm" variant="secondary" onClick={() => toast.success("Alterações salvas")}>Salvar</Button>} />
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 [&_input]:mt-1 [&_input]:w-full [&_input]:rounded-[10px] [&_input]:border [&_input]:border-line [&_input]:px-3 [&_input]:py-2 [&_input]:text-[13px]">
-                  <label className="text-[12px] font-medium text-muted">Razão social<input defaultValue={CLINIC.nome} /></label>
-                  <label className="text-[12px] font-medium text-muted">CNPJ<input defaultValue={CLINIC.cnpj} /></label>
-                  <label className="text-[12px] font-medium text-muted">Responsável técnica<input defaultValue={CLINIC.responsavel} /></label>
-                  <label className="text-[12px] font-medium text-muted">Telefone<input defaultValue={CLINIC.telefone} /></label>
-                  <label className="text-[12px] font-medium text-muted sm:col-span-2">E-mail<input defaultValue={CLINIC.email} /></label>
-                </div>
+                {loadingClinic && <SkeletonRows rows={3} />}
+                {!loadingClinic && clinicError && (
+                  <p className="text-sm text-danger">Erro ao carregar dados da clínica: {clinicError}</p>
+                )}
+                {!loadingClinic && clinic && (
+                  <ClinicForm
+                    clinic={clinic}
+                    readOnly={!isAdmin}
+                    onSave={async (input) => {
+                      const { error } = await updateClinic(input);
+                      if (error) {
+                        toast.warning("Erro ao salvar alterações");
+                        return;
+                      }
+                      toast.success("Alterações salvas");
+                    }}
+                  />
+                )}
               </div>
             </Card>
           )}
@@ -235,6 +247,93 @@ export function Settings() {
         }}
       />
     </div>
+  );
+}
+
+function ClinicForm({
+  clinic,
+  readOnly,
+  onSave,
+}: {
+  clinic: ClinicSettings;
+  readOnly: boolean;
+  onSave: (input: ClinicSettings) => Promise<void>;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [nome, setNome] = useState(clinic.nome);
+  const [cnpj, setCnpj] = useState(clinic.cnpj);
+  const [responsavel, setResponsavel] = useState(clinic.responsavel);
+  const [telefone, setTelefone] = useState(clinic.telefone);
+  const [email, setEmail] = useState(clinic.email);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setFormError(null);
+
+    if (!isValidCNPJ(cnpj)) return setFormError("CNPJ inválido — precisa ter 14 dígitos.");
+    if (!isValidPhone(telefone)) return setFormError("Telefone inválido — use DDD + número.");
+    if (!isValidEmail(email)) return setFormError("E-mail inválido.");
+
+    setSubmitting(true);
+    await onSave({ nome, cnpj, responsavel, telefone, email });
+    setSubmitting(false);
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <CardHeader
+        title="Dados da clínica"
+        action={
+          !readOnly && (
+            <Button size="sm" variant="secondary" type="submit" disabled={submitting}>
+              {submitting ? "Salvando..." : "Salvar"}
+            </Button>
+          )
+        }
+      />
+      {formError && <p className="mt-3 text-[13px] text-danger">{formError}</p>}
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 [&_input]:mt-1 [&_input]:w-full [&_input]:rounded-[10px] [&_input]:border [&_input]:border-line [&_input]:px-3 [&_input]:py-2 [&_input]:text-[13px] [&_input]:disabled:bg-surface-2">
+        <label className="text-[12px] font-medium text-muted">
+          Razão social
+          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome da clínica" disabled={readOnly} />
+        </label>
+        <label className="text-[12px] font-medium text-muted">
+          CNPJ
+          <input
+            value={cnpj}
+            onChange={(e) => setCnpj(maskCNPJ(e.target.value))}
+            placeholder="00.000.000/0000-00"
+            inputMode="numeric"
+            disabled={readOnly}
+          />
+        </label>
+        <label className="text-[12px] font-medium text-muted">
+          Responsável técnica
+          <input value={responsavel} onChange={(e) => setResponsavel(e.target.value)} placeholder="Nome do responsável" disabled={readOnly} />
+        </label>
+        <label className="text-[12px] font-medium text-muted">
+          Telefone
+          <input
+            value={telefone}
+            onChange={(e) => setTelefone(maskPhone(e.target.value))}
+            placeholder="(00) 00000-0000"
+            inputMode="numeric"
+            disabled={readOnly}
+          />
+        </label>
+        <label className="text-[12px] font-medium text-muted sm:col-span-2">
+          E-mail
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            type="email"
+            placeholder="contato@clinica.com.br"
+            disabled={readOnly}
+          />
+        </label>
+      </div>
+    </form>
   );
 }
 
