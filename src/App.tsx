@@ -1,5 +1,8 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import type { ReactNode } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { Login } from "@/pages/Login";
+import { useAuth } from "@/lib/auth";
 import { Dashboard } from "@/pages/Dashboard";
 import { Agenda } from "@/pages/Agenda";
 import { Patients } from "@/pages/Patients";
@@ -17,10 +20,26 @@ import { Reports } from "@/pages/Reports";
 import { Communication } from "@/pages/Communication";
 import { Settings } from "@/pages/Settings";
 
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { session, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) return null;
+  if (!session) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <Routes>
-      <Route element={<AppLayout />}>
+      <Route path="/login" element={<Login />} />
+      <Route
+        element={
+          <RequireAuth>
+            <AppLayout />
+          </RequireAuth>
+        }
+      >
         <Route index element={<Dashboard />} />
         <Route path="agenda" element={<Agenda />} />
         <Route path="pacientes" element={<Patients />} />
