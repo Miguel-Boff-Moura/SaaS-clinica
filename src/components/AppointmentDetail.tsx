@@ -30,6 +30,7 @@ export interface AppointmentView {
   observacao?: string;
   dataRetorno?: string | null;
   dataManutencao?: string | null;
+  valor?: number;
 }
 
 interface Lookups {

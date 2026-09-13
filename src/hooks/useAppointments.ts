@@ -23,6 +23,7 @@ export interface AppointmentRow {
   observacao: string | null;
   data_retorno: string | null;
   data_manutencao: string | null;
+  valor: number;
 }
 
 export interface NewAppointmentInput {
@@ -35,6 +36,7 @@ export interface NewAppointmentInput {
   tipo: string;
   origem: string;
   observacao?: string;
+  valor: number;
 }
 
 export function useAppointments() {
@@ -46,7 +48,7 @@ export function useAppointments() {
     setLoading(true);
     const { data, error } = await supabase
       .from("appointments")
-      .select("id, inicio, fim, paciente_id, profissional_id, procedimento_id, sala_id, status, tipo, origem, observacao, data_retorno, data_manutencao")
+      .select("id, inicio, fim, paciente_id, profissional_id, procedimento_id, sala_id, status, tipo, origem, observacao, data_retorno, data_manutencao, valor")
       .order("inicio");
     setError(error?.message ?? null);
     setData(data ?? []);

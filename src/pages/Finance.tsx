@@ -20,11 +20,15 @@ import {
 } from "@/data";
 import { usePendencias, type PendenciaRow } from "@/hooks/usePendencias";
 import { usePatients } from "@/hooks/usePatients";
+import { useAppointments } from "@/hooks/useAppointments";
+import { useProcedures } from "@/hooks/useProcedures";
+import { useProfessionals } from "@/hooks/useProfessionals";
 import { currency, mediumDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 const TABS = [
   { key: "visao", label: "Visão geral" },
+  { key: "relatorio", label: "Relatório" },
   { key: "pendencias", label: "Pendências" },
   { key: "receber", label: "A receber" },
   { key: "pagar", label: "A pagar" },
@@ -121,6 +125,8 @@ export function Finance() {
           </Card>
         </div>
       )}
+
+      {tab === "relatorio" && <RelatorioTab />}
 
       {tab === "pendencias" && <PendenciasTab />}
 
@@ -231,6 +237,127 @@ export function Finance() {
                 ))}
               </ul>
             </div>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RelatorioTab() {
+  const { data: appointments, loading, error } = useAppointments();
+  const { data: patients } = usePatients();
+  const { data: procedures } = useProcedures();
+  const { data: professionals } = useProfessionals();
+  const [mesFiltro, setMesFiltro] = useState("todos");
+
+  const patientMap = useMemo(() => new Map(patients.map((p) => [p.id, p])), [patients]);
+  const procedureMap = useMemo(() => new Map(procedures.map((p) => [p.id, p])), [procedures]);
+  const professionalMap = useMemo(() => new Map(professionals.map((p) => [p.id, p])), [professionals]);
+
+  const concluidos = useMemo(() => appointments.filter((a) => a.status === "concluido"), [appointments]);
+
+  const meses = useMemo(() => {
+    const set = new Set(concluidos.map((a) => a.inicio.slice(0, 7)));
+    return Array.from(set).sort();
+  }, [concluidos]);
+
+  const filtrados = concluidos.filter((a) => mesFiltro === "todos" || a.inicio.slice(0, 7) === mesFiltro);
+  const totalVendido = filtrados.reduce((s, a) => s + a.valor, 0);
+
+  const porProcedimento = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const a of filtrados) {
+      const nome = procedureMap.get(a.procedimento_id)?.nome ?? "—";
+      map.set(nome, (map.get(nome) ?? 0) + a.valor);
+    }
+    return [...map.entries()].map(([nome, valor]) => ({ nome, valor })).sort((a, b) => b.valor - a.valor);
+  }, [filtrados, procedureMap]);
+
+  const porProfissional = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const a of filtrados) {
+      const nome = professionalMap.get(a.profissional_id)?.nome ?? "—";
+      map.set(nome, (map.get(nome) ?? 0) + a.valor);
+    }
+    return [...map.entries()].map(([nome, valor]) => ({ nome, valor })).sort((a, b) => b.valor - a.valor);
+  }, [filtrados, professionalMap]);
+
+  const porCliente = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const a of filtrados) {
+      const nome = patientMap.get(a.paciente_id)?.nome ?? "Paciente removido";
+      map.set(nome, (map.get(nome) ?? 0) + a.valor);
+    }
+    return [...map.entries()].map(([nome, valor]) => ({ nome, valor })).sort((a, b) => b.valor - a.valor);
+  }, [filtrados, patientMap]);
+
+  if (loading) return <SkeletonRows rows={5} />;
+  if (error) return <p className="text-sm text-danger">Erro ao carregar relatório: {error}</p>;
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <select
+          value={mesFiltro}
+          onChange={(e) => setMesFiltro(e.target.value)}
+          className="focusable h-9 rounded-lg border border-line bg-white px-3 text-[13px] font-medium text-ink"
+        >
+          <option value="todos">Todos os meses</option>
+          {meses.map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+        <p className="text-[13px] text-muted">
+          Total vendido: <span className="font-semibold text-ink">{currency(totalVendido)}</span>
+          {" "}· {filtrados.length} atendimento{filtrados.length === 1 ? "" : "s"} concluído{filtrados.length === 1 ? "" : "s"}
+        </p>
+      </div>
+
+      <p className="mb-4 text-[12px] text-faint">
+        Baseado em atendimentos marcados como "concluído" na Agenda. Despesas ainda não têm cadastro próprio no sistema — só entradas reais aqui.
+      </p>
+
+      {filtrados.length === 0 ? (
+        <EmptyState title="Sem atendimentos concluídos" description="Nenhum dado real pra esse período ainda." />
+      ) : (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <Card>
+            <div className="p-5">
+              <CardHeader title="Faturamento por procedimento" />
+              <div className="mt-3">
+                <BreakdownDonut data={porProcedimento} />
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <div className="p-5">
+              <CardHeader title="Faturamento por profissional" />
+              <div className="mt-3">
+                <RankBars data={porProfissional} />
+              </div>
+            </div>
+          </Card>
+          <Card className="lg:col-span-2 overflow-hidden">
+            <div className="border-b border-line p-5 pb-0">
+              <CardHeader title="Faturamento por cliente" />
+            </div>
+            <table className="w-full text-left text-[13px]">
+              <thead>
+                <tr className="border-b border-line bg-surface-2/50 text-[11px] font-semibold uppercase text-faint">
+                  <th className="px-5 py-3">Cliente</th>
+                  <th className="px-3 py-3 text-right">Total vendido</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {porCliente.map((c) => (
+                  <tr key={c.nome} className="hover:bg-surface-2/60">
+                    <td className="px-5 py-3 font-medium text-ink">{c.nome}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-ink">{currency(c.valor)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </Card>
         </div>
       )}
