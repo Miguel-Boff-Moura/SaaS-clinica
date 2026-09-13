@@ -16,14 +16,14 @@ import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { useProfessionals } from "@/hooks/useProfessionals";
 import { useClinicSettings, type ClinicSettings } from "@/hooks/useClinicSettings";
+import { useProfiles } from "@/hooks/useProfiles";
+import { usePatients } from "@/hooks/usePatients";
 import { useAuth } from "@/lib/auth";
 import {
   ROLE_PERMISSIONS,
   ROOMS,
   UNITS,
-  USERS,
 } from "@/data";
-import { fullDate } from "@/lib/format";
 import { maskCNPJ, maskPhone, isValidCNPJ, isValidPhone, isValidEmail } from "@/lib/masks";
 import { cn } from "@/lib/cn";
 
@@ -45,6 +45,8 @@ export function Settings() {
   const isAdmin = profile?.role === "admin";
   const { data: professionals, loading: loadingProfessionals, error: professionalsError, create: createProfessional } = useProfessionals();
   const { data: clinic, loading: loadingClinic, error: clinicError, update: updateClinic } = useClinicSettings();
+  const { data: profiles, loading: loadingProfiles } = useProfiles();
+  const { data: patients, linkProfile } = usePatients();
   const [section, setSection] = useState("clinica");
   const [profModalOpen, setProfModalOpen] = useState(false);
 
@@ -124,28 +126,50 @@ export function Settings() {
           )}
 
           {section === "usuarios" && (
-            <Card className="overflow-hidden">
-              <table className="w-full text-left text-[13px]">
-                <thead>
-                  <tr className="border-b border-line bg-surface-2/50 text-[11px] font-semibold uppercase text-faint">
-                    <th className="px-5 py-3">Usuário</th>
-                    <th className="px-3 py-3">Papel</th>
-                    <th className="px-3 py-3">Último acesso</th>
-                    <th className="px-3 py-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {USERS.map((u) => (
-                    <tr key={u.id} className="hover:bg-surface-2/60">
-                      <td className="px-5 py-3"><p className="font-medium text-ink">{u.nome}</p><p className="text-[11px] text-faint">{u.email}</p></td>
-                      <td className="px-3 py-3"><Badge tone="primary" size="sm">{u.papel}</Badge></td>
-                      <td className="px-3 py-3 text-muted">{fullDate(u.ultimoAcesso)}</td>
-                      <td className="px-3 py-3"><Badge tone={u.ativo ? "ok" : "neutral"} size="sm">{u.ativo ? "Ativo" : "Inativo"}</Badge></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Card>
+            <div className="space-y-3">
+              {loadingProfiles && <SkeletonRows rows={3} />}
+              {!loadingProfiles && (
+                <Card className="overflow-hidden">
+                  <table className="w-full text-left text-[13px]">
+                    <thead>
+                      <tr className="border-b border-line bg-surface-2/50 text-[11px] font-semibold uppercase text-faint">
+                        <th className="px-5 py-3">Usuário</th>
+                        <th className="px-3 py-3">Papel</th>
+                        <th className="px-3 py-3">Vínculo com cadastro de paciente</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {profiles.map((p) => (
+                        <tr key={p.id} className="hover:bg-surface-2/60">
+                          <td className="px-5 py-3 font-medium text-ink">{p.full_name || "(sem nome)"}</td>
+                          <td className="px-3 py-3"><Badge tone="primary" size="sm">{p.role}</Badge></td>
+                          <td className="px-3 py-3">
+                            {p.role === "paciente" && (
+                              <select
+                                className="focusable h-8 rounded-lg border border-line bg-white px-2 text-[12.5px]"
+                                value={patients.find((pt) => pt.profile_id === p.id)?.id ?? ""}
+                                onChange={async (e) => {
+                                  const atual = patients.find((pt) => pt.profile_id === p.id);
+                                  if (atual) await linkProfile(atual.id, null);
+                                  if (e.target.value) await linkProfile(e.target.value, p.id);
+                                }}
+                              >
+                                <option value="">Sem vínculo</option>
+                                {patients
+                                  .filter((pt) => !pt.profile_id || pt.profile_id === p.id)
+                                  .map((pt) => (
+                                    <option key={pt.id} value={pt.id}>{pt.nome} · {pt.telefone}</option>
+                                  ))}
+                              </select>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Card>
+              )}
+            </div>
           )}
 
           {section === "permissoes" && (

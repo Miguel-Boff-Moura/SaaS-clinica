@@ -6,6 +6,7 @@ export interface PatientRow {
   nome: string;
   telefone: string;
   email: string;
+  profile_id: string | null;
 }
 
 export function usePatients() {
@@ -17,7 +18,7 @@ export function usePatients() {
     setLoading(true);
     const { data, error } = await supabase
       .from("patients")
-      .select("id, nome, telefone, email")
+      .select("id, nome, telefone, email, profile_id")
       .order("nome");
     setError(error?.message ?? null);
     setData(data ?? []);
@@ -28,12 +29,19 @@ export function usePatients() {
     reload();
   }, [reload]);
 
-  async function create(input: { nome: string; telefone: string; email?: string }) {
-    const { data, error } = await supabase.from("patients").insert(input).select("id, nome, telefone, email").single();
+  async function create(input: { nome: string; telefone: string; email?: string; profile_id?: string }) {
+    const { data, error } = await supabase.from("patients").insert(input).select("id, nome, telefone, email, profile_id").single();
     if (error) return { data: null, error: error.message };
     await reload();
     return { data, error: null };
   }
 
-  return { data, loading, error, create, reload };
+  async function linkProfile(patientId: string, profileId: string | null) {
+    const { error } = await supabase.from("patients").update({ profile_id: profileId }).eq("id", patientId);
+    if (error) return { error: error.message };
+    await reload();
+    return { error: null };
+  }
+
+  return { data, loading, error, create, linkProfile, reload };
 }

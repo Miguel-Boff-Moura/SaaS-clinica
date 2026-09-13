@@ -10,11 +10,14 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { AppointmentDetail, type AppointmentView } from "@/components/AppointmentDetail";
+import { DayView, WeekView, MonthView, type CalendarLookups } from "@/components/CalendarViews";
 import { useAppointments, type AppointmentStatus } from "@/hooks/useAppointments";
 import { usePatients } from "@/hooks/usePatients";
 import { useProfessionals } from "@/hooks/useProfessionals";
 import { useProcedures } from "@/hooks/useProcedures";
 import { useRooms } from "@/hooks/useRooms";
+import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
 import { maskPhone } from "@/lib/masks";
 import { colorForId } from "@/lib/color";
 import { returnStatus, daysUntil, type ReturnStatus } from "@/lib/returns";
@@ -24,7 +27,6 @@ import { addDays, sameDay, startOfWeek, time, longDate, shortDate } from "@/lib/
 import { cn } from "@/lib/cn";
 
 type ViewMode = "dia" | "semana" | "mes";
-const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 // Data real de hoje — diferente de NOW (@/lib/format), que é uma data fixa
 // usada só pelo restante do protótipo (ainda mockado) pra combinar com os
 // dados de exemplo. Agenda já é dado real, precisa da data real.
@@ -32,6 +34,8 @@ const NOW = new Date();
 
 export function Agenda() {
   const toast = useToast();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === "admin";
   const [params, setParams] = useSearchParams();
   const [view, setView] = useState<ViewMode>("dia");
   const [anchor, setAnchor] = useState<Date>(NOW);
@@ -41,12 +45,17 @@ export function Agenda() {
   const [statusFilter, setStatusFilter] = useState("todos");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [novoOpen, setNovoOpen] = useState(params.get("novo") === "1");
+  const [remarcarAlvo, setRemarcarAlvo] = useState<AppointmentView | null>(null);
 
-  const { data: appointmentsRaw, loading, error, create, updateStatus, updateReturnDates } = useAppointments();
-  const { data: patients, create: createPatient } = usePatients();
+  const { data: appointmentsRaw, loading, error, create, updateStatus, updateReturnDates, reload: reloadAppointments } = useAppointments();
+  const { data: patients, loading: loadingPatients, create: createPatient } = usePatients();
   const { data: professionals } = useProfessionals();
   const { data: procedures } = useProcedures();
   const { data: rooms } = useRooms();
+
+  // paciente: RLS já restringe patients/appointments ao próprio cadastro
+  const myPatient = !isAdmin ? patients[0] : undefined;
+  const needsProfileCompletion = !isAdmin && !loadingPatients && patients.length === 0;
 
   const patientMap = useMemo(() => new Map(patients.map((p) => [p.id, p])), [patients]);
   const professionalMap = useMemo(() => new Map(professionals.map((p) => [p.id, p])), [professionals]);
@@ -100,11 +109,27 @@ export function Agenda() {
 
   const lookups = { patientMap, professionalMap, procedureMap, roomMap };
 
+  if (needsProfileCompletion) {
+    return (
+      <div className="fade-in mx-auto max-w-md">
+        <PageHeader title="Agenda" subtitle="Finalize seu cadastro pra continuar" />
+        <CompleteProfileForm
+          defaultNome={profile?.full_name ?? ""}
+          onSave={async (input) => {
+            const { error } = await createPatient({ ...input, profile_id: profile!.id });
+            if (error) { toast.warning(error); return; }
+            toast.success("Cadastro concluído");
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="fade-in">
       <PageHeader
         title="Agenda"
-        subtitle="Multiprofissional, por sala, procedimento e status"
+        subtitle={isAdmin ? "Multiprofissional, por sala, procedimento e status" : "Seus agendamentos"}
         actions={
           <>
             <Segmented
@@ -138,12 +163,14 @@ export function Agenda() {
           </div>
           <p className="text-sm font-semibold capitalize text-ink">{rangeLabel}</p>
 
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Select value={proFilter} onChange={setProFilter} label="Profissional" options={[["todos", "Todos os profissionais"], ...professionals.map((p) => [p.id, p.nome] as [string, string])]} />
-            <Select value={roomFilter} onChange={setRoomFilter} label="Sala" options={[["todos", "Todas as salas"], ...rooms.map((r) => [r.id, r.nome] as [string, string])]} />
-            <Select value={procFilter} onChange={setProcFilter} label="Procedimento" options={[["todos", "Todos os procedimentos"], ...procedures.map((p) => [p.id, p.nome] as [string, string])]} />
-            <Select value={statusFilter} onChange={setStatusFilter} label="Status" options={[["todos", "Todos os status"], ...Object.entries(APPOINTMENT_STATUS).map(([k, v]) => [k, v.label] as [string, string])]} />
-          </div>
+          {isAdmin && (
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <Select value={proFilter} onChange={setProFilter} label="Profissional" options={[["todos", "Todos os profissionais"], ...professionals.map((p) => [p.id, p.nome] as [string, string])]} />
+              <Select value={roomFilter} onChange={setRoomFilter} label="Sala" options={[["todos", "Todas as salas"], ...rooms.map((r) => [r.id, r.nome] as [string, string])]} />
+              <Select value={procFilter} onChange={setProcFilter} label="Procedimento" options={[["todos", "Todos os procedimentos"], ...procedures.map((p) => [p.id, p.nome] as [string, string])]} />
+              <Select value={statusFilter} onChange={setStatusFilter} label="Status" options={[["todos", "Todos os status"], ...Object.entries(APPOINTMENT_STATUS).map(([k, v]) => [k, v.label] as [string, string])]} />
+            </div>
+          )}
         </div>
       </Card>
 
@@ -153,31 +180,34 @@ export function Agenda() {
       {!loading && !error && (
         <>
           {view === "dia" && <DayView date={anchor} appts={filtered} onOpen={setSelectedId} {...lookups} />}
-          {view === "semana" && <WeekView anchor={anchor} appts={filtered} onOpen={setSelectedId} {...lookups} />}
-          {view === "mes" && <MonthView anchor={anchor} appts={filtered} onPickDay={(d) => { setAnchor(d); setView("dia"); }} {...lookups} />}
+          {view === "semana" && <WeekView anchor={anchor} now={NOW} appts={filtered} onOpen={setSelectedId} {...lookups} />}
+          {view === "mes" && <MonthView anchor={anchor} now={NOW} appts={filtered} onPickDay={(d) => { setAnchor(d); setView("dia"); }} {...lookups} />}
         </>
       )}
 
       <AppointmentDetail
         appointment={selected}
+        patientView={!isAdmin}
         {...lookups}
         onClose={() => setSelectedId(null)}
-        onStatusChange={async (id, status) => {
+        onStatusChange={isAdmin ? async (id, status) => {
           const { error } = await updateStatus(id, status as AppointmentStatus);
           if (error) toast.warning("Erro ao atualizar status");
-        }}
-        onReturnDatesChange={async (id, input) => {
+        } : undefined}
+        onReturnDatesChange={isAdmin ? async (id, input) => {
           const { error } = await updateReturnDates(id, input);
           if (error) toast.warning("Erro ao salvar datas");
-        }}
+        } : undefined}
+        onRequestRemarcar={!isAdmin ? (a) => { setSelectedId(null); setRemarcarAlvo(a); } : undefined}
       />
 
-      <ReturnsPanel appointments={appointments} patientMap={patientMap} onOpen={setSelectedId} />
+      {isAdmin && <ReturnsPanel appointments={appointments} patientMap={patientMap} onOpen={setSelectedId} />}
 
       <NovoAgendamentoModal
         open={novoOpen}
         onClose={() => { setNovoOpen(false); params.delete("novo"); setParams(params, { replace: true }); }}
         patients={patients}
+        lockedPatient={myPatient}
         professionals={professionals}
         procedures={procedures}
         rooms={rooms}
@@ -188,6 +218,23 @@ export function Agenda() {
           toast.success("Agendamento criado");
         }}
       />
+
+      {!isAdmin && (
+        <RemarcarModal
+          appointment={remarcarAlvo}
+          onClose={() => setRemarcarAlvo(null)}
+          onSave={async (novoInicioISO) => {
+            const { error } = await supabase.rpc("reagendar_meu_atendimento", {
+              p_appointment_id: remarcarAlvo!.id,
+              p_novo_inicio: novoInicioISO,
+            });
+            if (error) { toast.warning(error.message); return; }
+            await reloadAppointments();
+            setRemarcarAlvo(null);
+            toast.success("Agendamento remarcado");
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -219,167 +266,12 @@ function Select({
   );
 }
 
-interface Lookups {
-  patientMap: Map<string, { id: string; nome: string; telefone: string }>;
-  professionalMap: Map<string, { id: string; nome: string }>;
-  procedureMap: Map<string, { id: string; nome: string; duracao_min: number }>;
-  roomMap: Map<string, { id: string; nome: string }>;
-}
-
-/* ---- Visão Dia ------------------------------------------------------- */
-function DayView({ date, appts, onOpen, patientMap, professionalMap, procedureMap, roomMap }: { date: Date; appts: AppointmentView[]; onOpen: (id: string) => void } & Lookups) {
-  const list = appts.filter((a) => sameDay(a.inicio, date)).sort((a, b) => +a.inicio - +b.inicio);
-  if (!list.length)
-    return (
-      <Card>
-        <EmptyState title="Nenhum agendamento neste dia" description="Ajuste os filtros ou crie um novo agendamento." />
-      </Card>
-    );
-
-  return (
-    <Card>
-      <div className="divide-y divide-line">
-        {list.map((a) => {
-          const p = patientMap.get(a.pacienteId);
-          const proc = procedureMap.get(a.procedimentoId);
-          const pro = professionalMap.get(a.profissionalId);
-          const room = roomMap.get(a.salaId);
-          const meta = APPOINTMENT_STATUS[a.status];
-          const dim = a.status === "cancelado" || a.status === "faltou";
-          return (
-            <button
-              key={a.id}
-              onClick={() => onOpen(a.id)}
-              className={cn(
-                "focusable flex w-full items-center gap-4 px-5 py-3.5 text-left transition-colors hover:bg-surface-2",
-                dim && "opacity-55"
-              )}
-            >
-              <div className="w-16 shrink-0">
-                <p className="text-[13px] font-semibold tabular-nums text-ink">{time(a.inicio)}</p>
-                <p className="text-[11px] text-faint">{time(a.fim)}</p>
-              </div>
-              <span className="h-10 w-1 shrink-0 rounded-full" style={{ background: colorForId(a.profissionalId) }} />
-              <Avatar name={p?.nome ?? "?"} size="sm" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13.5px] font-medium text-ink">{p?.nome ?? "Paciente removido"}</p>
-                <p className="truncate text-[12px] text-muted">{proc?.nome} · {a.tipo}</p>
-              </div>
-              <div className="hidden text-right sm:block">
-                <p className="text-[12px] font-medium text-ink">{pro?.nome}</p>
-                <p className="text-[11px] text-faint">{room?.nome}</p>
-              </div>
-              <Badge tone={meta.tone} size="sm">{meta.label}</Badge>
-            </button>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
-/* ---- Visão Semana -------------------------------------------------- */
-function WeekView({ anchor, appts, onOpen, patientMap, professionalMap }: { anchor: Date; appts: AppointmentView[]; onOpen: (id: string) => void } & Lookups) {
-  const start = startOfWeek(anchor);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  return (
-    <Card className="overflow-hidden">
-      <div className="grid grid-cols-7 divide-x divide-line">
-        {days.map((d, i) => {
-          const list = appts.filter((a) => sameDay(a.inicio, d)).sort((a, b) => +a.inicio - +b.inicio);
-          const isToday = sameDay(d, NOW);
-          return (
-            <div key={i} className="min-h-[420px]">
-              <div className={cn("border-b border-line px-2.5 py-2 text-center", isToday && "bg-primary-soft/50")}>
-                <p className="text-[11px] font-medium uppercase text-faint">{WEEKDAYS[i]}</p>
-                <p className={cn("text-[15px] font-semibold", isToday ? "text-primary-ink" : "text-ink")}>{d.getDate()}</p>
-              </div>
-              <div className="space-y-1.5 p-1.5">
-                {list.map((a) => {
-                  const p = patientMap.get(a.pacienteId);
-                  const meta = APPOINTMENT_STATUS[a.status];
-                  const dim = a.status === "cancelado" || a.status === "faltou";
-                  return (
-                    <button
-                      key={a.id}
-                      onClick={() => onOpen(a.id)}
-                      className={cn(
-                        "focusable w-full rounded-lg border-l-[3px] bg-surface-2 px-2 py-1.5 text-left transition hover:bg-surface-3",
-                        dim && "opacity-55 line-through"
-                      )}
-                      style={{ borderColor: colorForId(a.profissionalId) }}
-                    >
-                      <p className="text-[11px] font-semibold tabular-nums text-ink">{time(a.inicio)}</p>
-                      <p className="truncate text-[11px] text-muted">{(p?.nome ?? "?").split(" ")[0]}</p>
-                      <Badge tone={meta.tone} size="sm" className="mt-1 px-1.5 py-0 text-[9px]">{meta.label}</Badge>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
-/* ---- Visão Mês --------------------------------------------------- */
-function MonthView({ anchor, appts, onPickDay, patientMap }: { anchor: Date; appts: AppointmentView[]; onPickDay: (d: Date) => void } & Lookups) {
-  const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
-  const gridStart = startOfWeek(first);
-  const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
-  return (
-    <Card className="overflow-hidden">
-      <div className="grid grid-cols-7 border-b border-line bg-surface-2/60 text-center text-[11px] font-semibold uppercase text-faint">
-        {WEEKDAYS.map((w) => (
-          <div key={w} className="py-2">{w}</div>
-        ))}
-      </div>
-      <div className="grid grid-cols-7">
-        {cells.map((d, i) => {
-          const inMonth = d.getMonth() === anchor.getMonth();
-          const list = appts.filter((a) => sameDay(a.inicio, d));
-          const isToday = sameDay(d, NOW);
-          return (
-            <button
-              key={i}
-              onClick={() => onPickDay(d)}
-              className={cn(
-                "focusable min-h-[92px] border-b border-r border-line p-1.5 text-left transition-colors hover:bg-surface-2",
-                !inMonth && "bg-surface-2/40 text-faint"
-              )}
-            >
-              <span
-                className={cn(
-                  "inline-flex size-6 items-center justify-center rounded-full text-[12px] font-semibold",
-                  isToday ? "bg-primary text-white" : inMonth ? "text-ink" : "text-faint"
-                )}
-              >
-                {d.getDate()}
-              </span>
-              <div className="mt-1 space-y-0.5">
-                {list.slice(0, 3).map((a) => (
-                  <p key={a.id} className="flex items-center gap-1 truncate text-[10.5px] text-muted">
-                    <span className="size-1.5 shrink-0 rounded-full" style={{ background: colorForId(a.profissionalId) }} />
-                    {time(a.inicio)} {(patientMap.get(a.pacienteId)?.nome ?? "?").split(" ")[0]}
-                  </p>
-                ))}
-                {list.length > 3 && <p className="text-[10.5px] font-medium text-primary-ink">+{list.length - 3}</p>}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
 /* ---- Modal de novo agendamento ----------------------------------- */
 function NovoAgendamentoModal({
   open,
   onClose,
   patients,
+  lockedPatient,
   professionals,
   procedures,
   rooms,
@@ -390,6 +282,7 @@ function NovoAgendamentoModal({
   open: boolean;
   onClose: () => void;
   patients: { id: string; nome: string; telefone: string }[];
+  lockedPatient?: { id: string; nome: string; telefone: string };
   professionals: { id: string; nome: string }[];
   procedures: { id: string; nome: string; duracao_min: number; preco: number }[];
   rooms: { id: string; nome: string }[];
@@ -427,10 +320,10 @@ function NovoAgendamentoModal({
     if (!profissionalId) return setFormError("Escolha o profissional.");
     if (!salaId) return setFormError("Escolha a sala.");
 
-    let finalPacienteId = pacienteId;
+    let finalPacienteId = lockedPatient?.id ?? pacienteId;
     setSubmitting(true);
 
-    if (pacienteId === NOVO_PACIENTE) {
+    if (!lockedPatient && pacienteId === NOVO_PACIENTE) {
       if (!novoNome.trim() || !novoTelefone.trim()) {
         setSubmitting(false);
         return setFormError("Preencha nome e telefone do novo paciente.");
@@ -460,7 +353,7 @@ function NovoAgendamentoModal({
       procedimento_id: procedimentoId,
       sala_id: salaId,
       tipo: "Procedimento",
-      origem: "Recepção",
+      origem: lockedPatient ? "Agendamento online" : "Recepção",
       observacao: observacao || undefined,
       valor: proc.preco,
     });
@@ -488,17 +381,19 @@ function NovoAgendamentoModal({
       <form id="novo-agendamento-form" onSubmit={handleSubmit} className="space-y-4">
         {formError && <p className="text-[13px] text-danger">{formError}</p>}
 
-        <FormRow label="Paciente">
-          <select className="input" value={pacienteId} onChange={(e) => setPacienteId(e.target.value)}>
-            <option value="">Buscar paciente…</option>
-            {patients.map((p) => (
-              <option key={p.id} value={p.id}>{p.nome} · {p.telefone}</option>
-            ))}
-            <option value={NOVO_PACIENTE}>+ Cadastrar novo paciente</option>
-          </select>
-        </FormRow>
+        {!lockedPatient && (
+          <FormRow label="Paciente">
+            <select className="input" value={pacienteId} onChange={(e) => setPacienteId(e.target.value)}>
+              <option value="">Buscar paciente…</option>
+              {patients.map((p) => (
+                <option key={p.id} value={p.id}>{p.nome} · {p.telefone}</option>
+              ))}
+              <option value={NOVO_PACIENTE}>+ Cadastrar novo paciente</option>
+            </select>
+          </FormRow>
+        )}
 
-        {pacienteId === NOVO_PACIENTE && (
+        {!lockedPatient && pacienteId === NOVO_PACIENTE && (
           <div className="grid grid-cols-2 gap-3">
             <FormRow label="Nome do paciente">
               <input className="input" value={novoNome} onChange={(e) => setNovoNome(e.target.value)} placeholder="Nome completo" />
@@ -563,7 +458,7 @@ function ReturnsPanel({
   onOpen,
 }: {
   appointments: AppointmentView[];
-  patientMap: Lookups["patientMap"];
+  patientMap: CalendarLookups["patientMap"];
   onOpen: (id: string) => void;
 }) {
   const rows = useMemo(() => {
@@ -620,5 +515,99 @@ function FormRow({ label, children }: { label: string; children: React.ReactNode
       <span className="mb-1 block text-[12px] font-medium text-muted">{label}</span>
       {children}
     </label>
+  );
+}
+
+/* ---- Remarcar (paciente) ------------------------------------------ */
+function RemarcarModal({
+  appointment,
+  onClose,
+  onSave,
+}: {
+  appointment: AppointmentView | null;
+  onClose: () => void;
+  onSave: (novoInicioISO: string) => Promise<void>;
+}) {
+  const [data, setData] = useState("");
+  const [horario, setHorario] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    setFormError(null);
+    if (!data || !horario) return setFormError("Escolha data e horário.");
+    const novoInicio = new Date(`${data}T${horario}:00`);
+    if (novoInicio.getTime() < Date.now()) return setFormError("Escolha uma data futura.");
+
+    setSubmitting(true);
+    await onSave(novoInicio.toISOString());
+    setSubmitting(false);
+  }
+
+  return (
+    <Modal
+      open={!!appointment}
+      onClose={onClose}
+      title="Remarcar agendamento"
+      footer={
+        <>
+          <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
+          <Button size="sm" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? "Enviando..." : "Confirmar nova data"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {formError && <p className="text-[13px] text-danger">{formError}</p>}
+        <label className="text-[12px] font-medium text-muted">
+          Nova data
+          <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="mt-1 w-full rounded-[10px] border border-line px-3 py-2 text-[13px]" />
+        </label>
+        <label className="text-[12px] font-medium text-muted">
+          Novo horário
+          <input type="time" value={horario} onChange={(e) => setHorario(e.target.value)} className="mt-1 w-full rounded-[10px] border border-line px-3 py-2 text-[13px]" />
+        </label>
+      </div>
+    </Modal>
+  );
+}
+
+/* ---- Completar cadastro (primeiro acesso do paciente) -------------- */
+function CompleteProfileForm({
+  defaultNome,
+  onSave,
+}: {
+  defaultNome: string;
+  onSave: (input: { nome: string; telefone: string }) => Promise<void>;
+}) {
+  const [nome, setNome] = useState(defaultNome);
+  const [telefone, setTelefone] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    await onSave({ nome, telefone });
+    setSubmitting(false);
+  }
+
+  return (
+    <Card className="mt-4">
+      <div className="p-5">
+        <p className="mb-4 text-[13px] text-muted">Confirma teu nome e celular pra gente te encontrar na agenda da clínica.</p>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <label className="text-[12px] font-medium text-muted">
+            Nome completo
+            <input required value={nome} onChange={(e) => setNome(e.target.value)} className="mt-1 w-full rounded-[10px] border border-line px-3 py-2 text-[13px]" />
+          </label>
+          <label className="text-[12px] font-medium text-muted">
+            Celular
+            <input required value={telefone} onChange={(e) => setTelefone(maskPhone(e.target.value))} placeholder="(00) 00000-0000" className="mt-1 w-full rounded-[10px] border border-line px-3 py-2 text-[13px]" />
+          </label>
+          <Button type="submit" disabled={submitting}>{submitting ? "Salvando..." : "Concluir cadastro"}</Button>
+        </form>
+      </div>
+    </Card>
   );
 }

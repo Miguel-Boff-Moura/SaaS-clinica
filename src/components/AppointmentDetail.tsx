@@ -45,6 +45,8 @@ export function AppointmentDetail({
   onClose,
   onStatusChange,
   onReturnDatesChange,
+  onRequestRemarcar,
+  patientView = false,
   patientMap,
   professionalMap,
   procedureMap,
@@ -54,6 +56,8 @@ export function AppointmentDetail({
   onClose: () => void;
   onStatusChange?: (id: string, status: AppointmentStatus) => void;
   onReturnDatesChange?: (id: string, input: { data_retorno: string | null; data_manutencao: string | null }) => void;
+  onRequestRemarcar?: (appointment: AppointmentView) => void;
+  patientView?: boolean;
 } & Lookups) {
   const toast = useToast();
   const open = !!appointment;
@@ -72,36 +76,44 @@ export function AppointmentDetail({
   const room = appointment ? roomMap.get(appointment.salaId) : undefined;
   const meta = appointment ? APPOINTMENT_STATUS[appointment.status] : undefined;
 
+  const footer = !appointment ? null : patientView ? (
+    <div className="flex flex-wrap gap-2">
+      {appointment.status !== "em_atendimento" && appointment.status !== "concluido" && appointment.status !== "cancelado" && (
+        <Button size="sm" onClick={() => onRequestRemarcar?.(appointment)}>
+          <CalendarClock size={14} /> Remarcar
+        </Button>
+      )}
+    </div>
+  ) : (
+    <div className="flex flex-wrap gap-2">
+      <Button size="sm" onClick={() => onStatusChange?.(appointment.id, "em_atendimento")}>
+        <Play size={14} /> Iniciar atendimento
+      </Button>
+      <Button size="sm" variant="secondary" onClick={() => { onStatusChange?.(appointment.id, "confirmado"); toast.success("Agendamento confirmado"); }}>
+        <CheckCircle2 size={14} /> Confirmar
+      </Button>
+      <Button size="sm" variant="secondary" onClick={() => { onStatusChange?.(appointment.id, "concluido"); toast.success("Atendimento concluído"); }}>
+        <CheckCircle2 size={14} /> Concluir
+      </Button>
+      <Button size="sm" variant="secondary" onClick={() => toast.info("Remarcar", "Selecione novo horário na agenda.")}>
+        <CalendarClock size={14} /> Remarcar
+      </Button>
+      <Button size="sm" variant="secondary" onClick={() => toast.success("WhatsApp enviado", `Mensagem de confirmação para ${patient?.nome}.`)}>
+        <MessageCircle size={14} /> WhatsApp
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => { onStatusChange?.(appointment.id, "cancelado"); toast.warning("Agendamento cancelado"); }}>
+        <XCircle size={14} /> Cancelar
+      </Button>
+    </div>
+  );
+
   return (
     <SlideOver
       open={open}
       onClose={onClose}
       title={patient?.nome ?? "Agendamento"}
       subtitle={appointment ? `${fullDate(appointment.inicio)} · ${time(appointment.inicio)}–${time(appointment.fim)}` : undefined}
-      footer={
-        appointment && (
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => onStatusChange?.(appointment.id, "em_atendimento")}>
-              <Play size={14} /> Iniciar atendimento
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => { onStatusChange?.(appointment.id, "confirmado"); toast.success("Agendamento confirmado"); }}>
-              <CheckCircle2 size={14} /> Confirmar
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => { onStatusChange?.(appointment.id, "concluido"); toast.success("Atendimento concluído"); }}>
-              <CheckCircle2 size={14} /> Concluir
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => toast.info("Remarcar", "Selecione novo horário na agenda.")}>
-              <CalendarClock size={14} /> Remarcar
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => toast.success("WhatsApp enviado", `Mensagem de confirmação para ${patient?.nome}.`)}>
-              <MessageCircle size={14} /> WhatsApp
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => { onStatusChange?.(appointment.id, "cancelado"); toast.warning("Agendamento cancelado"); }}>
-              <XCircle size={14} /> Cancelar
-            </Button>
-          </div>
-        )
-      }
+      footer={footer}
     >
       {appointment && patient && (
         <div className="space-y-5">
@@ -134,6 +146,7 @@ export function AppointmentDetail({
             </div>
           )}
 
+          {!patientView && (
           <div className="rounded-xl border border-line bg-white p-4">
             <p className="mb-3 text-[12px] font-semibold uppercase text-faint">Retorno e manutenção</p>
             <p className="mb-3 text-[12px] text-muted">Preenchimento manual — o sistema não calcula isso sozinho.</p>
@@ -175,6 +188,7 @@ export function AppointmentDetail({
               {savingDates ? "Salvando..." : "Salvar datas"}
             </Button>
           </div>
+          )}
         </div>
       )}
     </SlideOver>
