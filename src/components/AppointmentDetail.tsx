@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   CalendarClock,
   CheckCircle2,
@@ -27,6 +28,8 @@ export interface AppointmentView {
   tipo: string;
   origem: string;
   observacao?: string;
+  dataRetorno?: string | null;
+  dataManutencao?: string | null;
 }
 
 interface Lookups {
@@ -40,6 +43,7 @@ export function AppointmentDetail({
   appointment,
   onClose,
   onStatusChange,
+  onReturnDatesChange,
   patientMap,
   professionalMap,
   procedureMap,
@@ -48,9 +52,18 @@ export function AppointmentDetail({
   appointment: AppointmentView | null;
   onClose: () => void;
   onStatusChange?: (id: string, status: AppointmentStatus) => void;
+  onReturnDatesChange?: (id: string, input: { data_retorno: string | null; data_manutencao: string | null }) => void;
 } & Lookups) {
   const toast = useToast();
   const open = !!appointment;
+  const [retorno, setRetorno] = useState(appointment?.dataRetorno ?? "");
+  const [manutencao, setManutencao] = useState(appointment?.dataManutencao ?? "");
+  const [savingDates, setSavingDates] = useState(false);
+
+  useEffect(() => {
+    setRetorno(appointment?.dataRetorno ?? "");
+    setManutencao(appointment?.dataManutencao ?? "");
+  }, [appointment?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const patient = appointment ? patientMap.get(appointment.pacienteId) : undefined;
   const proc = appointment ? procedureMap.get(appointment.procedimentoId) : undefined;
@@ -72,6 +85,9 @@ export function AppointmentDetail({
             </Button>
             <Button size="sm" variant="secondary" onClick={() => { onStatusChange?.(appointment.id, "confirmado"); toast.success("Agendamento confirmado"); }}>
               <CheckCircle2 size={14} /> Confirmar
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => { onStatusChange?.(appointment.id, "concluido"); toast.success("Atendimento concluído"); }}>
+              <CheckCircle2 size={14} /> Concluir
             </Button>
             <Button size="sm" variant="secondary" onClick={() => toast.info("Remarcar", "Selecione novo horário na agenda.")}>
               <CalendarClock size={14} /> Remarcar
@@ -116,6 +132,48 @@ export function AppointmentDetail({
               {appointment.observacao}
             </div>
           )}
+
+          <div className="rounded-xl border border-line bg-white p-4">
+            <p className="mb-3 text-[12px] font-semibold uppercase text-faint">Retorno e manutenção</p>
+            <p className="mb-3 text-[12px] text-muted">Preenchimento manual — o sistema não calcula isso sozinho.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-[12px] font-medium text-muted">
+                Retorno em
+                <input
+                  type="date"
+                  value={retorno}
+                  onChange={(e) => setRetorno(e.target.value)}
+                  className="mt-1 w-full rounded-[10px] border border-line px-3 py-2 text-[13px]"
+                />
+              </label>
+              <label className="text-[12px] font-medium text-muted">
+                Manutenção em
+                <input
+                  type="date"
+                  value={manutencao}
+                  onChange={(e) => setManutencao(e.target.value)}
+                  className="mt-1 w-full rounded-[10px] border border-line px-3 py-2 text-[13px]"
+                />
+              </label>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="mt-3"
+              disabled={savingDates}
+              onClick={async () => {
+                setSavingDates(true);
+                await onReturnDatesChange?.(appointment.id, {
+                  data_retorno: retorno || null,
+                  data_manutencao: manutencao || null,
+                });
+                setSavingDates(false);
+                toast.success("Datas salvas");
+              }}
+            >
+              {savingDates ? "Salvando..." : "Salvar datas"}
+            </Button>
+          </div>
         </div>
       )}
     </SlideOver>

@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { PageHeader, EmptyState, SkeletonRows } from "@/components/ui/Misc";
-import { Card } from "@/components/ui/Card";
+import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Segmented } from "@/components/ui/Tabs";
 import { Badge, APPOINTMENT_STATUS } from "@/components/ui/Badge";
@@ -17,18 +17,24 @@ import { useProcedures } from "@/hooks/useProcedures";
 import { useRooms } from "@/hooks/useRooms";
 import { maskPhone } from "@/lib/masks";
 import { colorForId } from "@/lib/color";
+import { returnStatus, daysUntil, type ReturnStatus } from "@/lib/returns";
+import { RETURN_STATUS } from "@/components/ui/Badge";
+import { ReturnRing } from "@/components/ui/Misc";
 import { addDays, sameDay, startOfWeek, time, longDate, shortDate } from "@/lib/format";
-import { TODAY } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 type ViewMode = "dia" | "semana" | "mes";
 const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+// Data real de hoje — diferente de NOW (@/lib/format), que é uma data fixa
+// usada só pelo restante do protótipo (ainda mockado) pra combinar com os
+// dados de exemplo. Agenda já é dado real, precisa da data real.
+const NOW = new Date();
 
 export function Agenda() {
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const [view, setView] = useState<ViewMode>("dia");
-  const [anchor, setAnchor] = useState<Date>(TODAY);
+  const [anchor, setAnchor] = useState<Date>(NOW);
   const [proFilter, setProFilter] = useState("todos");
   const [roomFilter, setRoomFilter] = useState("todos");
   const [procFilter, setProcFilter] = useState("todos");
@@ -36,7 +42,7 @@ export function Agenda() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [novoOpen, setNovoOpen] = useState(params.get("novo") === "1");
 
-  const { data: appointmentsRaw, loading, error, create, updateStatus } = useAppointments();
+  const { data: appointmentsRaw, loading, error, create, updateStatus, updateReturnDates } = useAppointments();
   const { data: patients, create: createPatient } = usePatients();
   const { data: professionals } = useProfessionals();
   const { data: procedures } = useProcedures();
@@ -61,6 +67,8 @@ export function Agenda() {
         tipo: a.tipo,
         origem: a.origem,
         observacao: a.observacao ?? undefined,
+        dataRetorno: a.data_retorno,
+        dataManutencao: a.data_manutencao,
       })),
     [appointmentsRaw]
   );
@@ -120,7 +128,7 @@ export function Agenda() {
             <button onClick={() => step(-1)} className="focusable flex size-8 items-center justify-center rounded-lg border border-line hover:bg-surface-2">
               <ChevronLeft size={16} />
             </button>
-            <button onClick={() => setAnchor(TODAY)} className="focusable rounded-lg border border-line px-3 py-1.5 text-[13px] font-medium hover:bg-surface-2">
+            <button onClick={() => setAnchor(NOW)} className="focusable rounded-lg border border-line px-3 py-1.5 text-[13px] font-medium hover:bg-surface-2">
               Hoje
             </button>
             <button onClick={() => step(1)} className="focusable flex size-8 items-center justify-center rounded-lg border border-line hover:bg-surface-2">
@@ -157,7 +165,13 @@ export function Agenda() {
           const { error } = await updateStatus(id, status as AppointmentStatus);
           if (error) toast.warning("Erro ao atualizar status");
         }}
+        onReturnDatesChange={async (id, input) => {
+          const { error } = await updateReturnDates(id, input);
+          if (error) toast.warning("Erro ao salvar datas");
+        }}
       />
+
+      <ReturnsPanel appointments={appointments} patientMap={patientMap} onOpen={setSelectedId} />
 
       <NovoAgendamentoModal
         open={novoOpen}
@@ -272,7 +286,7 @@ function WeekView({ anchor, appts, onOpen, patientMap, professionalMap }: { anch
       <div className="grid grid-cols-7 divide-x divide-line">
         {days.map((d, i) => {
           const list = appts.filter((a) => sameDay(a.inicio, d)).sort((a, b) => +a.inicio - +b.inicio);
-          const isToday = sameDay(d, TODAY);
+          const isToday = sameDay(d, NOW);
           return (
             <div key={i} className="min-h-[420px]">
               <div className={cn("border-b border-line px-2.5 py-2 text-center", isToday && "bg-primary-soft/50")}>
@@ -325,7 +339,7 @@ function MonthView({ anchor, appts, onPickDay, patientMap }: { anchor: Date; app
         {cells.map((d, i) => {
           const inMonth = d.getMonth() === anchor.getMonth();
           const list = appts.filter((a) => sameDay(a.inicio, d));
-          const isToday = sameDay(d, TODAY);
+          const isToday = sameDay(d, NOW);
           return (
             <button
               key={i}
@@ -537,6 +551,64 @@ function NovoAgendamentoModal({
         <style>{`.input{width:100%;border:1px solid var(--color-line);border-radius:10px;padding:8px 10px;font-size:13px;background:#fff;color:var(--color-ink)}.input:focus{outline:2px solid var(--color-primary);outline-offset:1px}`}</style>
       </form>
     </Modal>
+  );
+}
+
+/* ---- Painel de retornos e manutenções a vencer -------------------- */
+function ReturnsPanel({
+  appointments,
+  patientMap,
+  onOpen,
+}: {
+  appointments: AppointmentView[];
+  patientMap: Lookups["patientMap"];
+  onOpen: (id: string) => void;
+}) {
+  const rows = useMemo(() => {
+    const out: { id: string; patientNome: string; label: string; dateStr: string; status: ReturnStatus; dias: number }[] = [];
+    for (const a of appointments) {
+      // só faz sentido cobrar retorno de um atendimento que já aconteceu
+      if (a.status !== "concluido") continue;
+      const nome = patientMap.get(a.pacienteId)?.nome ?? "Paciente removido";
+      if (a.dataRetorno) {
+        out.push({ id: a.id, patientNome: nome, label: "Retorno", dateStr: a.dataRetorno, status: returnStatus(a.dataRetorno, NOW), dias: daysUntil(a.dataRetorno, NOW) });
+      }
+      if (a.dataManutencao) {
+        out.push({ id: a.id, patientNome: nome, label: "Manutenção", dateStr: a.dataManutencao, status: returnStatus(a.dataManutencao, NOW), dias: daysUntil(a.dataManutencao, NOW) });
+      }
+    }
+    return out.filter((r) => r.status !== "em_dia").sort((a, b) => a.dias - b.dias);
+  }, [appointments, patientMap]);
+
+  if (rows.length === 0) return null;
+
+  return (
+    <Card className="mt-4">
+      <div className="p-5">
+        <CardHeader title="Retornos e manutenções a vencer" subtitle="Preenchidos manualmente no atendimento" />
+        <ul className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {rows.map((r, i) => {
+            const meta = RETURN_STATUS[r.status];
+            const progresso = r.status === "vencido" ? 1 : Math.max(0, Math.min(1, 1 - r.dias / 30));
+            return (
+              <li key={`${r.id}-${r.label}-${i}`}>
+                <button
+                  onClick={() => onOpen(r.id)}
+                  className="focusable flex w-full items-center gap-3 rounded-xl p-1.5 text-left hover:bg-surface-2"
+                >
+                  <ReturnRing progress={progresso} status={r.status} size={42} stroke={4} label={r.dias < 0 ? "!" : `${r.dias}d`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-medium text-ink">{r.patientNome}</p>
+                    <p className="truncate text-[11px] text-muted">{r.label}</p>
+                  </div>
+                  <Badge tone={meta.tone} size="sm">{meta.label}</Badge>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </Card>
   );
 }
 
