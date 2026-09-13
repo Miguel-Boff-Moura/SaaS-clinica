@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import {
   Building2,
   CreditCard,
@@ -8,14 +8,16 @@ import {
   Stethoscope,
   UsersRound,
 } from "lucide-react";
-import { PageHeader } from "@/components/ui/Misc";
+import { PageHeader, SkeletonRows, EmptyState } from "@/components/ui/Misc";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
+import { useProfessionals } from "@/hooks/useProfessionals";
+import { useAuth } from "@/lib/auth";
 import {
   CLINIC,
-  PROFESSIONALS,
   ROLE_PERMISSIONS,
   ROOMS,
   UNITS,
@@ -38,7 +40,11 @@ const ACCESS_TONE = { total: "ok", leitura: "warn", nenhum: "neutral" } as const
 
 export function Settings() {
   const toast = useToast();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === "admin";
+  const { data: professionals, loading: loadingProfessionals, error: professionalsError, create: createProfessional } = useProfessionals();
   const [section, setSection] = useState("clinica");
+  const [profModalOpen, setProfModalOpen] = useState(false);
 
   return (
     <div className="fade-in">
@@ -77,18 +83,32 @@ export function Settings() {
           )}
 
           {section === "profissionais" && (
-            <Card className="divide-y divide-line">
-              {PROFESSIONALS.map((p) => (
-                <div key={p.id} className="flex items-center gap-3 p-4">
-                  <span className="size-9 rounded-full" style={{ background: p.cor }} />
-                  <div className="flex-1">
-                    <p className="text-[13px] font-medium text-ink">{p.nome}</p>
-                    <p className="text-[11px] text-faint">{p.especialidade} · {p.conselho}</p>
-                  </div>
-                  <Badge tone="primary" size="sm">{p.procedimentos.length} procedimentos</Badge>
+            <div className="space-y-3">
+              {isAdmin && (
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={() => setProfModalOpen(true)}>Novo profissional</Button>
                 </div>
-              ))}
-            </Card>
+              )}
+              {loadingProfessionals && <SkeletonRows rows={3} />}
+              {!loadingProfessionals && professionalsError && (
+                <p className="text-sm text-danger">Erro ao carregar profissionais: {professionalsError}</p>
+              )}
+              {!loadingProfessionals && !professionalsError && professionals.length === 0 && (
+                <EmptyState title="Nenhum profissional cadastrado" />
+              )}
+              {professionals.length > 0 && (
+                <Card className="divide-y divide-line">
+                  {professionals.map((p) => (
+                    <div key={p.id} className="flex items-center gap-3 p-4">
+                      <div className="flex-1">
+                        <p className="text-[13px] font-medium text-ink">{p.nome}</p>
+                        <p className="text-[11px] text-faint">{p.especialidade}</p>
+                      </div>
+                    </div>
+                  ))}
+                </Card>
+              )}
+            </div>
           )}
 
           {section === "usuarios" && (
@@ -199,6 +219,73 @@ export function Settings() {
           )}
         </div>
       </div>
+
+      <NewProfessionalModal
+        open={profModalOpen}
+        onClose={() => setProfModalOpen(false)}
+        onCreate={async (input) => {
+          const { error } = await createProfessional(input);
+          if (error) {
+            toast.warning("Erro ao criar profissional");
+            return false;
+          }
+          toast.success("Profissional criado");
+          setProfModalOpen(false);
+          return true;
+        }}
+      />
     </div>
+  );
+}
+
+function NewProfessionalModal({
+  open,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreate: (input: { nome: string; especialidade: string }) => Promise<boolean>;
+}) {
+  const [nome, setNome] = useState("");
+  const [especialidade, setEspecialidade] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    const ok = await onCreate({ nome, especialidade });
+    setSubmitting(false);
+    if (ok) {
+      setNome("");
+      setEspecialidade("");
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Novo profissional"
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button type="submit" form="new-professional-form" disabled={submitting}>
+            {submitting ? "Salvando..." : "Salvar"}
+          </Button>
+        </>
+      }
+    >
+      <form id="new-professional-form" onSubmit={handleSubmit} className="flex flex-col gap-4 [&_input]:mt-1 [&_input]:w-full [&_input]:rounded-[10px] [&_input]:border [&_input]:border-line [&_input]:px-3 [&_input]:py-2 [&_input]:text-[13px]">
+        <label className="text-[12px] font-medium text-muted">
+          Nome
+          <input required value={nome} onChange={(e) => setNome(e.target.value)} />
+        </label>
+        <label className="text-[12px] font-medium text-muted">
+          Especialidade
+          <input required value={especialidade} onChange={(e) => setEspecialidade(e.target.value)} />
+        </label>
+      </form>
+    </Modal>
   );
 }

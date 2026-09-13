@@ -21,7 +21,10 @@ export function Modal({
   useEscape(onClose, open);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div
+      className="fixed inset-y-0 right-0 z-50 flex items-center justify-center p-4"
+      style={{ left: "var(--sidebar-w, 0px)" }}
+    >
       <div className="absolute inset-0 bg-ink/30 fade-in" onClick={onClose} />
       <div
         className={cn(
