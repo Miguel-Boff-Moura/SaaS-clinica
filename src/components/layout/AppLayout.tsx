@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
@@ -32,7 +32,10 @@ export function AppLayout() {
   }, [pathname]);
 
   return (
-    <div className="flex min-h-screen bg-canvas">
+    <div
+      className="flex min-h-screen bg-canvas"
+      style={{ "--sidebar-w": collapsed ? "72px" : "240px" } as CSSProperties}
+    >
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onQuickAction={() => setQuickOpen(true)} />
