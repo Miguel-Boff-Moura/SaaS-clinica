@@ -5,11 +5,13 @@ import {
   Check,
   ChevronDown,
   CircleHelp,
+  LogOut,
   Plus,
   Search,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useClickOutside } from "@/hooks/useClickOutside";
+import { useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { PATIENTS, UNITS, CLINIC } from "@/data";
@@ -31,10 +33,13 @@ export function Topbar({ onQuickAction }: { onQuickAction: () => void }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [unitOpen, setUnitOpen] = useState(false);
   const [unit, setUnit] = useState(UNITS[0]);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const { profile, signOut } = useAuth();
 
   const searchRef = useClickOutside<HTMLDivElement>(() => setSearchOpen(false));
   const notifRef = useClickOutside<HTMLDivElement>(() => setNotifOpen(false));
   const unitRef = useClickOutside<HTMLDivElement>(() => setUnitOpen(false));
+  const profileRef = useClickOutside<HTMLDivElement>(() => setProfileOpen(false));
 
   const results = useMemo(() => {
     if (!q.trim()) return [];
@@ -172,14 +177,29 @@ export function Topbar({ onQuickAction }: { onQuickAction: () => void }) {
         </button>
 
         {/* Perfil */}
-        <button className="focusable flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 hover:bg-surface-2">
-          <Avatar name="Dra. Mariana Costa" size="sm" color="#0F766E" />
-          <span className="hidden text-left leading-tight lg:block">
-            <span className="block text-[13px] font-semibold text-ink">Dra. Mariana Costa</span>
-            <span className="block text-[11px] text-faint">Administradora</span>
-          </span>
-          <ChevronDown size={14} className="hidden text-faint lg:block" />
-        </button>
+        <div ref={profileRef} className="relative">
+          <button
+            onClick={() => setProfileOpen((v) => !v)}
+            className="focusable flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 hover:bg-surface-2"
+          >
+            <Avatar name={profile?.full_name || "Usuário"} size="sm" color="#0F766E" />
+            <span className="hidden text-left leading-tight lg:block">
+              <span className="block text-[13px] font-semibold text-ink">{profile?.full_name || "Usuário"}</span>
+              <span className="block text-[11px] text-faint capitalize">{profile?.role ?? ""}</span>
+            </span>
+            <ChevronDown size={14} className="hidden text-faint lg:block" />
+          </button>
+          {profileOpen && (
+            <div className="card absolute right-0 mt-1.5 w-48 overflow-hidden p-1.5 shadow-[var(--shadow-pop)]">
+              <button
+                onClick={signOut}
+                className="focusable flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-surface-2"
+              >
+                <LogOut size={15} /> Sair
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );
